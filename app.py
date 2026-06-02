@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from replacement import apply_replacements, count_matches, normalize_rules
+from replacement import apply_replacements, normalize_rules
 
 
 st.set_page_config(
@@ -25,23 +25,18 @@ def init_state() -> None:
     if "original_text" not in st.session_state:
         st.session_state.original_text = ""
 
+    if "replaced_text" not in st.session_state:
+        st.session_state.replaced_text = ""
 
-def load_sample() -> None:
-    st.session_state.original_text = (
-        "放課後、私は古い学校の廊下を歩いていた。\n"
-        "理科室の前で、誰もいないはずの教室から小さな声が聞こえた。\n"
-        "その声は、昨日いなくなった友達の声にそっくりだった。"
-    )
-    st.session_state.rules = [
-        {"元の単語": "学校", "修正後の単語": "病院"},
-        {"元の単語": "理科室", "修正後の単語": "霊安室"},
-        {"元の単語": "友達", "修正後の単語": "母"},
-    ]
+    if "last_rules_json" not in st.session_state:
+        st.session_state.last_rules_json = "{}"
 
 
 def reset_all() -> None:
-    st.session_state.original_text = ""
     st.session_state.rules = INITIAL_RULES.copy()
+    st.session_state.original_text = ""
+    st.session_state.replaced_text = ""
+    st.session_state.last_rules_json = "{}"
 
 
 init_state()
@@ -68,8 +63,6 @@ original_text = st.text_area(
     placeholder="例: 放課後、私は古い学校の廊下を歩いていた……",
 )
 
-st.session_state.original_text = original_text
-
 
 # -----------------------------
 # 置換ルール
@@ -85,6 +78,7 @@ edited_df = st.data_editor(
     hide_index=True,
     num_rows="dynamic",
     use_container_width=True,
+    key="rules_editor",
     column_config={
         "元の単語": st.column_config.TextColumn(
             "元の単語",
@@ -100,52 +94,55 @@ edited_df = st.data_editor(
 )
 
 edited_rows = edited_df.fillna("").to_dict(orient="records")
-st.session_state.rules = edited_rows
 
-col1, col2, col3 = st.columns([1, 1, 4])
+
+# -----------------------------
+# 操作ボタン
+# -----------------------------
+col1, col2, col3 = st.columns([1.5, 1, 4])
 
 with col1:
-    if st.button("＋追加", use_container_width=True):
-        st.session_state.rules.append({"元の単語": "", "修正後の単語": ""})
-        st.rerun()
-
-with col2:
-    if st.button("サンプル", use_container_width=True):
-        load_sample()
-        st.rerun()
-
-with col3:
-    if st.button("リセット", use_container_width=True):
-        reset_all()
-        st.rerun()
-
-
-rules, warnings = normalize_rules(st.session_state.rules)
-
-for warning in warnings:
-    st.warning(warning)
-
-
-# -----------------------------
-# マッチ数
-# -----------------------------
-if original_text and rules:
-    st.subheader("置換対象の確認")
-
-    match_counts = count_matches(original_text, rules)
-
-    match_df = pd.DataFrame(
-        [
-            {
-                "元の単語": src,
-                "修正後の単語": rules[src],
-                "出現回数": count,
-            }
-            for src, count in match_counts.items()
-        ]
+    replace_clicked = st.button(
+        "一括置換",
+        type="primary",
+        use_container_width=True,
     )
 
-    st.dataframe(match_df, hide_index=True, use_container_width=True)
+with col2:
+    reset_clicked = st.button(
+        "リセット",
+        use_container_width=True,
+    )
+
+if reset_clicked:
+    reset_all()
+    st.rerun()
+
+
+# -----------------------------
+# 一括置換処理
+# -----------------------------
+if replace_clicked:
+    st.session_state.original_text = original_text
+    st.session_state.rules = edited_rows
+
+    rules, warnings = normalize_rules(edited_rows)
+
+    for warning in warnings:
+        st.warning(warning)
+
+    st.session_state.replaced_text = apply_replacements(
+        original_text=original_text,
+        rules=rules,
+    )
+
+    st.session_state.last_rules_json = json.dumps(
+        rules,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    st.success("一括置換しました。")
 
 
 # -----------------------------
@@ -153,11 +150,9 @@ if original_text and rules:
 # -----------------------------
 st.subheader("修正後の文章")
 
-replaced_text = apply_replacements(original_text, rules)
-
 st.text_area(
     label="置換結果",
-    value=replaced_text,
+    value=st.session_state.replaced_text,
     height=260,
 )
 
@@ -170,18 +165,16 @@ download_col1, download_col2 = st.columns(2)
 with download_col1:
     st.download_button(
         label="修正後の文章をダウンロード",
-        data=replaced_text,
+        data=st.session_state.replaced_text,
         file_name="kaidan_replaced.txt",
         mime="text/plain",
         use_container_width=True,
     )
 
 with download_col2:
-    rules_json = json.dumps(rules, ensure_ascii=False, indent=2)
-
     st.download_button(
         label="置換ルールをJSONでダウンロード",
-        data=rules_json,
+        data=st.session_state.last_rules_json,
         file_name="replacement_rules.json",
         mime="application/json",
         use_container_width=True,
