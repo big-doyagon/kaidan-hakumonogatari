@@ -99,7 +99,7 @@ edited_rows = edited_df.fillna("").to_dict(orient="records")
 # -----------------------------
 # 操作ボタン
 # -----------------------------
-col1, col2, col3 = st.columns([1.5, 1, 4])
+col1, col2, col3, col4 = st.columns([1.2, 1.2, 1, 3.6])
 
 with col1:
     replace_clicked = st.button(
@@ -109,10 +109,22 @@ with col1:
     )
 
 with col2:
+    add_clicked = st.button(
+        "＋追加",
+        use_container_width=True,
+    )
+
+with col3:
     reset_clicked = st.button(
         "リセット",
         use_container_width=True,
     )
+
+if add_clicked:
+    st.session_state.original_text = original_text
+    st.session_state.rules = edited_rows
+    st.session_state.rules.append({"元の単語": "", "修正後の単語": ""})
+    st.rerun()
 
 if reset_clicked:
     reset_all()
